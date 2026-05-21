@@ -1,5 +1,5 @@
 /**
- * LLM Chat Application Template
+ * LLM Chat Application Template (Fixed with clean history storage)
  */
 
 import { Env, ChatMessage } from "./types";
@@ -18,15 +18,12 @@ export default {
 			return env.ASSETS.fetch(request);
 		}
 
-		// ✅ Load chat history
+		// Get chat history
 		if (url.pathname === "/api/history") {
 			const sessionId = url.searchParams.get("sessionId");
 
 			if (!sessionId) {
-				return Response.json(
-					{ error: "Missing sessionId" },
-					{ status: 400 }
-				);
+				return Response.json({ error: "Missing sessionId" }, { status: 400 });
 			}
 
 			const result = await env.DB.prepare(
@@ -38,7 +35,7 @@ export default {
 			return Response.json(result.results);
 		}
 
-		// Chat API
+		// Chat endpoint
 		if (url.pathname === "/api/chat") {
 			if (request.method === "POST") {
 				return handleChatRequest(request, env);
@@ -67,7 +64,7 @@ async function saveMessage(
 }
 
 /**
- * Chat handler
+ * Chat handler (FIXED STREAM PARSING)
  */
 async function handleChatRequest(request: Request, env: Env): Promise<Response> {
 	try {
@@ -76,13 +73,12 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
 			sessionId: string;
 		};
 
-		// Validate session
 		if (!sessionId) {
 			return new Response("Missing sessionId", { status: 400 });
 		}
 
 		// Add system prompt if missing
-		if (!messages.some((msg) => msg.role === "system")) {
+		if (!messages.some((m) => m.role === "system")) {
 			messages.unshift({
 				role: "system",
 				content: SYSTEM_PROMPT,
@@ -100,16 +96,16 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
 			);
 		}
 
-		// Call AI model (streaming)
+		// AI stream
 		const stream = await env.AI.run(MODEL_ID, {
 			messages,
 			max_tokens: 1024,
 			stream: true,
 		});
 
-		// Convert stream so we can also capture full response
 		const reader = stream.getReader();
 		const decoder = new TextDecoder();
+
 		let fullResponse = "";
 
 		const { readable, writable } = new TransformStream();
@@ -120,19 +116,38 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
 				const { value, done } = await reader.read();
 				if (done) break;
 
-				const chunk = decoder.decode(value);
-				fullResponse += chunk;
+				const chunk = decoder.decode(value, { stream: true });
+
+				const lines = chunk.split("\n");
+
+				for (const line of lines) {
+					if (!line.startsWith("data:")) continue;
+
+					const jsonStr = line.replace("data:", "").trim();
+
+					if (jsonStr === "[DONE]") continue;
+
+					try {
+						const parsed = JSON.parse(jsonStr);
+
+						const content =
+							parsed.response ||
+							parsed.choices?.[0]?.delta?.content ||
+							"";
+
+						if (content) {
+							fullResponse += content;
+						}
+					} catch {
+						// ignore malformed chunks
+					}
+				}
 
 				writer.write(value);
 			}
 
-			// Save assistant response
-			await saveMessage(
-				env,
-				sessionId,
-				"assistant",
-				fullResponse
-			);
+			// Save ONLY clean final response
+			await saveMessage(env, sessionId, "assistant", fullResponse);
 
 			writer.close();
 		})();
@@ -144,8 +159,8 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
 				connection: "keep-alive",
 			},
 		});
-	} catch (error) {
-		console.error(error);
+	} catch (err) {
+		console.error(err);
 
 		return Response.json(
 			{ error: "Failed to process request" },
