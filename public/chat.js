@@ -19,7 +19,8 @@ let isProcessing = false;
  * Convert URLs into clickable links
  */
 function linkify(text) {
-	const urlRegex = /(https?:\/\/[^\s]+)/g;
+	// Match URLs with or without <>
+	const urlRegex = /(\bhttps?:\/\/[^\s<>]+)/g;
 
 	return text.replace(urlRegex, (url) => {
 		return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
