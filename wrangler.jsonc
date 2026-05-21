@@ -18,5 +18,12 @@
 	"ai": {
 		"binding": "AI"
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "vd1-template-database",
+			"database_id": "16ba2f1f-2568-491b-a34d-70d4c9d113d2"
+		}
+	]
 }
