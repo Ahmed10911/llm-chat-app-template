@@ -40,6 +40,15 @@ async function loadChatHistory() {
 /**
  * Send message
  */
+
+function linkify(text) {
+	const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+	return text.replace(urlRegex, (url) => {
+		return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+	});
+}
+
 async function sendMessage() {
 	const message = userInput.value.trim();
 	if (!message || isProcessing) return;
@@ -105,7 +114,7 @@ async function sendMessage() {
 
 					if (content) {
 						responseText += content;
-						p.textContent = responseText;
+						p.innerHTML = linkify(responseText);
 					}
 				} catch {}
 			}
@@ -136,7 +145,7 @@ async function sendMessage() {
 function addMessageToChat(role, content) {
 	const div = document.createElement("div");
 	div.className = `message ${role}-message`;
-	div.innerHTML = `<p>${content}</p>`;
+	div.innerHTML = `<p>${linkify(content)}</p>`;
 	chatMessages.appendChild(div);
 	chatMessages.scrollTop = chatMessages.scrollHeight;
 }
