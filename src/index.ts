@@ -1,3 +1,7 @@
+/**
+ * LLM Chat Application Template
+ */
+
 import { Env, ChatMessage } from "./types";
 
 const MODEL_ID = "@cf/meta/llama-3.1-8b-instruct-fp8";
@@ -14,12 +18,15 @@ export default {
 			return env.ASSETS.fetch(request);
 		}
 
-		// ✅ NEW: Load chat history
+		// ✅ Load chat history
 		if (url.pathname === "/api/history") {
 			const sessionId = url.searchParams.get("sessionId");
 
 			if (!sessionId) {
-				return Response.json({ error: "Missing sessionId" }, { status: 400 });
+				return Response.json(
+					{ error: "Missing sessionId" },
+					{ status: 400 }
+				);
 			}
 
 			const result = await env.DB.prepare(
@@ -48,55 +55,59 @@ export default {
  */
 async function saveMessage(
 	env: Env,
-	: string,
+	sessionId: string,
 	role: string,
 	content: string
 ) {
 	await env.DB.prepare(
 		"INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)"
 	)
-		.bind(, role, content)
+		.bind(sessionId, role, content)
 		.run();
 }
 
 /**
- * Chat handler (UPDATED with DB logic)
+ * Chat handler
  */
-async function handleChatRequest(
-	request: Request,
-	env: Env
-): Promise<Response> {
+async function handleChatRequest(request: Request, env: Env): Promise<Response> {
 	try {
-		const { messages = [],  } = (await request.json()) as {
+		const { messages = [], sessionId } = (await request.json()) as {
 			messages: ChatMessage[];
-			: string;
+			sessionId: string;
 		};
 
-		if (!) {
-			return new Response("Missing ", { status: 400 });
+		// Validate session
+		if (!sessionId) {
+			return new Response("Missing sessionId", { status: 400 });
 		}
 
-		// Add system prompt
+		// Add system prompt if missing
 		if (!messages.some((msg) => msg.role === "system")) {
-			messages.unshift({ role: "system", content: SYSTEM_PROMPT });
+			messages.unshift({
+				role: "system",
+				content: SYSTEM_PROMPT,
+			});
 		}
 
-		// ✅ Save user message (last message)
+		// Save user message
 		const lastUserMessage = messages[messages.length - 1];
 		if (lastUserMessage?.role === "user") {
-			await saveMessage(env, , "user", lastUserMessage.content);
+			await saveMessage(
+				env,
+				sessionId,
+				"user",
+				lastUserMessage.content
+			);
 		}
 
-		const stream = await env.AI.run(
-			MODEL_ID,
-			{
-				messages,
-				max_tokens: 1024,
-				stream: true,
-			}
-		);
+		// Call AI model (streaming)
+		const stream = await env.AI.run(MODEL_ID, {
+			messages,
+			max_tokens: 1024,
+			stream: true,
+		});
 
-		// Convert stream → response so we can save assistant output
+		// Convert stream so we can also capture full response
 		const reader = stream.getReader();
 		const decoder = new TextDecoder();
 		let fullResponse = "";
@@ -111,11 +122,17 @@ async function handleChatRequest(
 
 				const chunk = decoder.decode(value);
 				fullResponse += chunk;
+
 				writer.write(value);
 			}
 
-			// Save assistant reply after streaming ends
-			await saveMessage(env, , "assistant", fullResponse);
+			// Save assistant response
+			await saveMessage(
+				env,
+				sessionId,
+				"assistant",
+				fullResponse
+			);
 
 			writer.close();
 		})();
@@ -129,6 +146,7 @@ async function handleChatRequest(
 		});
 	} catch (error) {
 		console.error(error);
+
 		return Response.json(
 			{ error: "Failed to process request" },
 			{ status: 500 }
