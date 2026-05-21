@@ -4,7 +4,7 @@ const userInput = document.getElementById("user-input");
 const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
-// Session ID (persistent per user)
+// Session ID
 const sessionId =
 	localStorage.getItem("sessionId") ||
 	crypto.randomUUID();
@@ -16,7 +16,18 @@ let chatHistory = [];
 let isProcessing = false;
 
 /**
- * Load chat history from backend
+ * Convert URLs into clickable links
+ */
+function linkify(text) {
+	const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+	return text.replace(urlRegex, (url) => {
+		return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+	});
+}
+
+/**
+ * Load chat history
  */
 async function loadChatHistory() {
 	try {
@@ -40,15 +51,6 @@ async function loadChatHistory() {
 /**
  * Send message
  */
-
-function linkify(text) {
-	const urlRegex = /(https?:\/\/[^\s]+)/g;
-
-	return text.replace(urlRegex, (url) => {
-		return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
-	});
-}
-
 async function sendMessage() {
 	const message = userInput.value.trim();
 	if (!message || isProcessing) return;
@@ -85,6 +87,7 @@ async function sendMessage() {
 
 		const assistantMessageEl = document.createElement("div");
 		assistantMessageEl.className = "message assistant-message";
+
 		const p = document.createElement("p");
 		assistantMessageEl.appendChild(p);
 		chatMessages.appendChild(assistantMessageEl);
@@ -94,8 +97,6 @@ async function sendMessage() {
 			if (done) break;
 
 			const chunk = decoder.decode(value);
-
-			// Extract only response field safely
 			const lines = chunk.split("\n");
 
 			for (const line of lines) {
@@ -114,11 +115,16 @@ async function sendMessage() {
 
 					if (content) {
 						responseText += content;
-						p.innerHTML = linkify(responseText);
+
+						// ✅ STREAMING: plain text only (stable)
+						p.textContent = responseText;
 					}
 				} catch {}
 			}
 		}
+
+		// ✅ FINAL RENDER: convert links once at end
+		p.innerHTML = linkify(responseText);
 
 		chatHistory.push({
 			role: "assistant",
@@ -126,10 +132,7 @@ async function sendMessage() {
 		});
 	} catch (err) {
 		console.error(err);
-		addMessageToChat(
-			"assistant",
-			"Error processing request."
-		);
+		addMessageToChat("assistant", "Error processing request.");
 	} finally {
 		typingIndicator.classList.remove("visible");
 		isProcessing = false;
@@ -145,7 +148,9 @@ async function sendMessage() {
 function addMessageToChat(role, content) {
 	const div = document.createElement("div");
 	div.className = `message ${role}-message`;
+
 	div.innerHTML = `<p>${linkify(content)}</p>`;
+
 	chatMessages.appendChild(div);
 	chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -160,5 +165,5 @@ userInput.addEventListener("keydown", (e) => {
 	}
 });
 
-// Load history on start
+// Init
 window.addEventListener("DOMContentLoaded", loadChatHistory);
