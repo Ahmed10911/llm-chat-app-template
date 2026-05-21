@@ -10,6 +10,12 @@ const userInput = document.getElementById("user-input");
 const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
+const sessionId =
+	localStorage.getItem("sessionId") ||
+	crypto.randomUUID();
+
+localStorage.setItem("sessionId", sessionId);
+
 // Chat state
 let chatHistory = [
 	{
@@ -40,6 +46,29 @@ sendButton.addEventListener("click", sendMessage);
 /**
  * Sends a message to the chat API and processes the response
  */
+
+async function loadChatHistory() {
+	try {
+		const res = await fetch(`/api/history?sessionId=${sessionId}`);
+		const data = await res.json();
+
+		if (!Array.isArray(data)) return;
+
+		// Clear UI
+		chatMessages.innerHTML = "";
+
+		// Reset local memory
+		chatHistory = [];
+
+		// Rebuild chat UI from DB
+		data.forEach((msg) => {
+			chatHistory.push(msg);
+			addMessageToChat(msg.role, msg.content);
+		});
+	} catch (err) {
+		console.error("Failed to load history:", err);
+	}
+}
 async function sendMessage() {
 	const message = userInput.value.trim();
 
@@ -83,6 +112,7 @@ async function sendMessage() {
 			},
 			body: JSON.stringify({
 				messages: chatHistory,
+				sessionId: sessionId,
 			}),
 		});
 
@@ -228,3 +258,7 @@ function consumeSseEvents(buffer) {
 	}
 	return { events, buffer: normalized };
 }
+
+window.addEventListener("DOMContentLoaded", () => {
+	loadChatHistory();
+});
